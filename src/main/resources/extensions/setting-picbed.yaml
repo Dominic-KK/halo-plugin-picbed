@@ -1,0 +1,99 @@
+apiVersion: v1alpha1
+kind: Setting
+metadata:
+  name: picbed-policy-setting
+spec:
+  forms:
+    - group: default
+      label: 图床配置
+      formSchema:
+        # 图床类型下拉框
+        - $formkit: select
+          name: providerType
+          key: providerType
+          id: providerType
+          label: 图床类型
+          value: github
+          options:
+            - label: GitHub
+              value: github
+            - label: 阿里云 OSS（即将支持）
+              value: aliyun
+
+        # ===== GitHub 配置（providerType 为 github 时显示） =====
+        - $formkit: text
+          name: githubRepo
+          key: githubRepo
+          label: 仓库
+          placeholder: owner/repo
+          help: 格式为 owner/repo，例如：Dominic-kk/xxxxxx
+          validation: required
+          if: "$get(providerType).value === 'github'"
+        - $formkit: text
+          name: githubBranch
+          key: githubBranch
+          label: 分支
+          value: main
+          if: "$get(providerType).value === 'github'"
+        - $formkit: text
+          name: githubPathPrefix
+          key: githubPathPrefix
+          label: 存储路径前缀
+          value: halo-atta/
+          help: 文件在仓库中的存放路径，以 / 结尾，例如 halo-atta/
+          if: "$get(providerType).value === 'github'"
+        - $formkit: text
+          name: githubCustomUrl
+          key: githubCustomUrl
+          label: 自定义域名
+          placeholder: https://your-domain.com
+          help: 推荐使用 Cloudflare 自行代理，具体参考插件使用教程
+          if: "$get(providerType).value === 'github'"
+        - $formkit: secret
+          name: githubTokenSecretName
+          key: githubTokenSecretName
+          label: GitHub Token
+          descriptionPreset: GitHub 访问令牌
+          requiredKeys:
+            - key: picbed-github-token
+              help: 👆不要修改，👇填GitHub Personal Access Token
+          if: "$get(providerType).value == 'github'"
+
+        # ===== 阿里云 OSS 配置（providerType 为 aliyun 时显示） =====
+        - $formkit: text
+          name: developing
+          label: 开发中。。。
+          help: 功能开发中，即将支持
+          disabled: true
+          if: "$get(providerType).value === 'aliyun'"
+        # - $formkit: text
+        #   name: aliyunEndpoint
+        #   key: aliyunEndpoint
+        #   label: Endpoint
+        #   if: "$get(providerType).value === 'aliyun'"
+        # - $formkit: text
+        #   name: aliyunBucket
+        #   key: aliyunBucket
+        #   label: Bucket 名称
+        #   if: "$get(providerType).value === 'aliyun'"
+        # - $formkit: secret
+        #   name: aliyunSecretName
+        #   key: aliyunSecretName
+        #   label: AccessKey
+        #   descriptionPreset: 阿里云 OSS 访问密钥
+        #   requiredKeys:
+        #     - key: accessKeyId
+        #       help: AccessKey ID
+        #     - key: accessKeySecret
+        #       help: AccessKey Secret
+        #   if: "$get(providerType).value === 'aliyun'"
+
+        # ===== 通用重命名设置 =====
+        - $formkit: text
+          name: renameFormat
+          key: renameFormat
+          label: 重命名格式
+          value: "{y}/{m}/{d}{h}{i}-{rand:3}"
+          help: |
+            可用占位符：{y} 年、{m} 月、{d} 日、{h} 时、{i} 分
+            {origin} 原文件名、{timestamp} 时间戳、{rand:N} N 位随机字符

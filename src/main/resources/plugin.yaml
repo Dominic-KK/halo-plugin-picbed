@@ -1,0 +1,24 @@
+# Refer https://docs.halo.run/developer-guide/plugin/basics/manifest
+
+apiVersion: plugin.halo.run/v1alpha1
+kind: Plugin
+metadata:
+  # The name defines how the plugin is invoked, A unique name
+  name: plugin-picbed-dominickonode
+spec:
+  enabled: true
+  requires: ">=2.26.0"
+  author:
+    name: Dominic Konode
+    website: https://github.com/Dominic-kk
+  logo: logo.png
+  homepage: https://github.com/Dominic-kk/picbed#readme
+  repo: https://github.com/Dominic-kk/picbed
+  issues: https://github.com/Dominic-kk/picbed/issues
+  displayName: "🌹图床附件🌹"
+  description: "支持 GitHub 图床的 Halo 附件存储插件"
+  settingName: plugin-picbed-settings
+  configMapName: plugin-picbed-config
+  license:
+    - name: "GPL-3.0"
+      url: "https://github.com/Dominic-kk/picbed/blob/main/LICENSE"

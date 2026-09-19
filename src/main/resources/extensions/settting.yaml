@@ -1,0 +1,13 @@
+apiVersion: v1alpha1
+kind: Setting
+metadata:
+  name: plugin-picbed-settings
+spec:
+  forms:
+    - group: notice
+      label: 使用提示
+      formSchema:
+        - $el: p
+          children: |
+            请前往「附件 → 存储策略」，点击「新建」，
+            选择「🌹图床附件🌹 @DKK」进行配置。

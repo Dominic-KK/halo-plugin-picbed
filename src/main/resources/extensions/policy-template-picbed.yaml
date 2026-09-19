@@ -1,0 +1,8 @@
+apiVersion: storage.halo.run/v1alpha1
+kind: PolicyTemplate
+metadata:
+  name: picbed
+spec:
+  displayName: 🌹图床附件🌹 @DKK
+  settingName: picbed-policy-setting
+  configMapName: picbed-policy-config
