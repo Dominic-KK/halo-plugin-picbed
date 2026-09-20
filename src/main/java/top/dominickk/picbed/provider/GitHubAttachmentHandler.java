@@ -291,14 +291,22 @@ public class GitHubAttachmentHandler implements AttachmentHandler {
             Constant.EXTERNAL_LINK_ANNO_KEY, detail.publicUrl()));
 
         var spec = new AttachmentSpec();
-        spec.setDisplayName(detail.fileName());
+        // 附件列表显示格式化后的文件名（objectKey 最后一段），而非粘贴/上传时的原始名
+        spec.setDisplayName(formattedFileName(detail.objectKey()));
         spec.setMediaType(detail.mediaType());
         spec.setSize(detail.size());
 
         var attachment = new Attachment();
         attachment.setMetadata(metadata);
         attachment.setSpec(spec);
+        // status 必须非空：Halo 核心上传端点会调用 attachment.getStatus().setPermalink(...)
+        attachment.setStatus(new Attachment.AttachmentStatus());
         return attachment;
+    }
+
+    private static String formattedFileName(String objectKey) {
+        int idx = objectKey.lastIndexOf('/');
+        return idx >= 0 ? objectKey.substring(idx + 1) : objectKey;
     }
 
     private boolean shouldHandle(Policy policy) {
