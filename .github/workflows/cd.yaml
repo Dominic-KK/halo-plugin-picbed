@@ -11,9 +11,8 @@ jobs:
     permissions:
       contents: write
     with:
-      ui-path: "ui"
-      pnpm-version: 10
-      node-version: 24
+      # 本插件为后端纯插件，无 UI，跳过 Node.js/pnpm 环境与缓存
+      skip-node-setup: true
       java-version: 21
       # Remove skip-appstore-release and set app-id if you want to release to the App Store
       skip-appstore-release: true
