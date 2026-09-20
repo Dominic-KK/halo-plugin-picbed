@@ -6,6 +6,10 @@ plugins {
 
 group 'top.dominickk.picbed'
 
+base {
+    archivesName = 'halo-plugin-picbed'
+}
+
 repositories {
     mavenCentral()
 }
