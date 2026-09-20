@@ -12,7 +12,6 @@ jobs:
   ci:
     uses: halo-sigs/reusable-workflows/.github/workflows/plugin-ci.yaml@v4
     with:
-      ui-path: "ui"
-      pnpm-version: 10
-      node-version: 24
+      # 本插件为后端纯插件，无 UI，跳过 Node.js/pnpm 环境与缓存
+      skip-node-setup: true
       java-version: 21
