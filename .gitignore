@@ -83,3 +83,5 @@ application-local.properties
 /ui/build/
 /workplace/
 /src/main/resources/ui/
+
+.trae/

@@ -1,0 +1,10 @@
+apiVersion: plugin.halo.run/v1alpha1
+kind: ExtensionDefinition
+metadata:
+  name: picbed-github-handler
+spec:
+  className: top.dominickk.picbed.provider.GitHubAttachmentHandler
+  extensionPointName: attachment-handler
+  displayName: GitHub 图床
+  description: 将附件上传至指定 GitHub 仓库
+  type: ATTACHMENT

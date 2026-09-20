@@ -43,6 +43,13 @@ spec:
           help: 文件在仓库中的存放路径，以 / 结尾，例如 halo-atta/
           if: "$get(providerType).value === 'github'"
         - $formkit: text
+          name: githubApiBase
+          key: githubApiBase
+          label: GitHub API 基地址
+          value: https://api.github.com
+          help: 上传/删除接口地址。默认直连 api.github.com；如国内直连不稳，可改为自建代理（需代理后再填写，否则保持默认）
+          if: "$get(providerType).value === 'github'"
+        - $formkit: text
           name: githubCustomUrl
           key: githubCustomUrl
           label: 自定义域名
@@ -57,7 +64,7 @@ spec:
           requiredKeys:
             - key: picbed-github-token
               help: 👆不要修改，👇填GitHub Personal Access Token
-          if: "$get(providerType).value == 'github'"
+          if: "$get(providerType).value === 'github'"
 
         # ===== 阿里云 OSS 配置（providerType 为 aliyun 时显示） =====
         - $formkit: text
