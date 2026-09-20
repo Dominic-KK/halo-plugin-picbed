@@ -17,8 +17,8 @@ spec:
           options:
             - label: GitHub
               value: github
-            - label: 阿里云 OSS（即将支持）
-              value: aliyun
+            # - label: 阿里云 OSS（即将支持）
+            #   value: aliyun
 
         # ===== GitHub 配置（providerType 为 github 时显示） =====
         - $formkit: text
@@ -47,14 +47,15 @@ spec:
           key: githubApiBase
           label: GitHub API 基地址
           value: https://api.github.com
-          help: 上传/删除接口地址。默认直连 api.github.com；如国内直连不稳，可改为自建代理（需代理后再填写，否则保持默认）
+          help: 上传/删除接口地址。默认直连 api.github.com，如国内直连不稳，可改为自建代理，如果你不知道这是什么，请保持默认。
           if: "$get(providerType).value === 'github'"
         - $formkit: text
           name: githubCustomUrl
           key: githubCustomUrl
           label: 自定义域名
-          placeholder: https://your-domain.com
-          help: 推荐使用 Cloudflare 自行代理，具体参考插件使用教程
+          placeholder: 默认：https://raw.githubusercontent.com
+          help: 默认的官方域名通常在国内机器无法访问，请使用 Cloudflare 自行代理，这是本插件推荐的方式，具体参考插件使用教程
+          validation: required
           if: "$get(providerType).value === 'github'"
         - $formkit: secret
           name: githubTokenSecretName

@@ -27,6 +27,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -119,46 +122,81 @@ public class GitHubAttachmentHandler implements AttachmentHandler {
             DataBufferUtils.release(dataBuffer);
 
             String originalName = ctx.file().filename();
+            String mediaType = mediaTypeOf(ctx.file(), originalName);
+            String branch = defaultBranch(props.githubBranch());
+            String repo = props.githubRepo();
+
+            // GitHub Contents API 的"读 ref -> 提交 -> 更新 ref"在并发写同一分支时会被互相顶掉
+            // （报 409 is at X but expected Y）。这里按 仓库+分支 串行化写操作，与 PicGo 顺序上传一致。
+            return Mono.fromCallable(() ->
+                    withRepoLock(repo, branch,
+                        () -> putWithRetry(props, token, bytes, originalName, mediaType, branch)))
+                .subscribeOn(BLOCKING);
+        });
+    }
+
+    private ObjectDetail putWithRetry(GithubProperties props, String token, byte[] bytes,
+                                     String originalName, String mediaType, String branch) throws Exception {
+        int attempts = 4;
+        RuntimeException last = null;
+        for (int i = 0; i < attempts; i++) {
             String objectKey = FileNameGenerator.generateObjectKey(
                 props.renameFormat(), originalName, props.githubPathPrefix());
-            String mediaType = mediaTypeOf(ctx.file(), originalName);
+            String apiBase = resolveApiBase(props.githubApiBase());
+            String url = apiBase + "/repos/" + props.githubRepo() + "/contents/" + objectKey;
 
-            return Mono.fromCallable(() -> {
-                String apiBase = resolveApiBase(props.githubApiBase());
-                String branch = defaultBranch(props.githubBranch());
-                String url = apiBase + "/repos/" + props.githubRepo() + "/contents/" + objectKey;
+            var body = new LinkedHashMap<String, String>();
+            body.put("message", "Upload " + objectKey + " via Picbed Plugin");
+            body.put("content", Base64.getEncoder().encodeToString(bytes));
+            body.put("branch", branch);
 
-                var body = new LinkedHashMap<String, String>();
-                body.put("message", "Upload " + objectKey + " via Picbed Plugin");
-                body.put("content", Base64.getEncoder().encodeToString(bytes));
-                body.put("branch", branch);
-
-                HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url))
-                    .header("Authorization", "Bearer " + token)
-                    .header("Accept", "application/vnd.github+json")
-                    .header("X-GitHub-Api-Version", "2022-11-28")
-                    .PUT(HttpRequest.BodyPublishers.ofString(
-                        JACKSON.writeValueAsString(body), StandardCharsets.UTF_8))
-                    .build();
-                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-                if (response.statusCode() != 200 && response.statusCode() != 201) {
-                    throw new RuntimeException("GitHub 上传失败(" + response.statusCode() + "): "
-                        + extractError(response));
-                }
+            HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url))
+                .header("Authorization", "Bearer " + token)
+                .header("Accept", "application/vnd.github+json")
+                .header("X-GitHub-Api-Version", "2022-11-28")
+                .PUT(HttpRequest.BodyPublishers.ofString(
+                    JACKSON.writeValueAsString(body), StandardCharsets.UTF_8))
+                .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200 || response.statusCode() == 201) {
                 log.info("Uploaded {} -> {}/{}", originalName, props.githubRepo(), objectKey);
                 return new ObjectDetail(objectKey, originalName, mediaType, bytes.length,
                     buildPublicUrl(props, objectKey));
-            }).subscribeOn(BLOCKING);
-        });
+            }
+            if (response.statusCode() == 409) {
+                // 路径冲突（可能残留并发或同名），重新生成 objectKey 重试
+                last = new RuntimeException("GitHub 上传失败(409): " + extractError(response));
+                continue;
+            }
+            throw new RuntimeException("GitHub 上传失败(" + response.statusCode() + "): "
+                + extractError(response));
+        }
+        throw last;
+    }
+
+    private static final ConcurrentHashMap<String, ReentrantLock> REPO_LOCKS =
+        new ConcurrentHashMap<>();
+
+    private static <T> T withRepoLock(String repo, String branch, Callable<T> action) throws Exception {
+        ReentrantLock lock = REPO_LOCKS.computeIfAbsent(
+            repo + "/" + branch, k -> new ReentrantLock());
+        lock.lock();
+        try {
+            return action.call();
+        } finally {
+            lock.unlock();
+        }
     }
 
     // ------------------------------------------------------------------ delete
 
     private Mono<Void> deleteRemote(GithubProperties props, String token, String objectKey) {
         return Mono.fromCallable(() -> {
-            String apiBase = resolveApiBase(props.githubApiBase());
             String branch = defaultBranch(props.githubBranch());
             String repo = props.githubRepo();
+            // 删除同样改写仓库分支 ref，与上传共用同一把锁避免竞态
+            return withRepoLock(repo, branch, () -> {
+                String apiBase = resolveApiBase(props.githubApiBase());
 
             // 1) 先查询文件携带的 SHA
             String getUrl = apiBase + "/repos/" + repo + "/contents/" + objectKey
@@ -202,6 +240,7 @@ public class GitHubAttachmentHandler implements AttachmentHandler {
             }
             log.info("Deleted {}/{}", repo, objectKey);
             return null;
+            });
         }).subscribeOn(BLOCKING).then();
     }
 
