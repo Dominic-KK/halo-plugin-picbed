@@ -3,6 +3,6 @@ kind: PolicyTemplate
 metadata:
   name: picbed
 spec:
-  displayName: 🌹图床附件🌹 @DKK
+  displayName: 🌹图床附件🌹
   settingName: picbed-policy-setting
   configMapName: picbed-policy-config
