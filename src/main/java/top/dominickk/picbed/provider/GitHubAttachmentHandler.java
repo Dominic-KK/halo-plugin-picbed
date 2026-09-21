@@ -35,6 +35,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 /**
  * 基于 Halo {@link AttachmentHandler} 的 GitHub 图床存储实现。
  *
@@ -54,6 +56,11 @@ public class GitHubAttachmentHandler implements AttachmentHandler {
     private static final String POLICY_TEMPLATE_NAME = "picbed";
     private static final String OBJECT_KEY_ANNO = "picbed.plugin.halo.run/object-key";
     private static final String SECRET_KEY = "picbed-github-token";
+
+    /** 单文件大小上限默认值（MB）：GitHub Contents API 单文件理论上限约 100MB，Base64 后约 133MB，默认为 50MB。 */
+    private static final long DEFAULT_MAX_FILE_SIZE_MB = 50L;
+    /** GitHub 完整请求（含响应）超时。 */
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
 
     private static final Scheduler BLOCKING = Schedulers.boundedElastic();
     private static final ObjectMapper JACKSON = new ObjectMapper();
@@ -116,23 +123,36 @@ public class GitHubAttachmentHandler implements AttachmentHandler {
     // ------------------------------------------------------------------ upload
 
     private Mono<ObjectDetail> upload(UploadContext ctx, GithubProperties props, String token) {
-        return DataBufferUtils.join(ctx.file().content()).flatMap(dataBuffer -> {
-            byte[] bytes = new byte[dataBuffer.readableByteCount()];
-            dataBuffer.read(bytes);
-            DataBufferUtils.release(dataBuffer);
+        // 单次消费 content()：流式累积大小，达到配额限制报错，避免超大文件整个载入内存
+        long sizeLimit = props.maxFileSizeBytes();
+        long[] size = {0L};
+        return DataBufferUtils.join(ctx.file().content()
+            .handle((dataBuffer, sink) -> {
+                size[0] += dataBuffer.readableByteCount();
+                if (size[0] > sizeLimit) {
+                    sink.error(new IllegalArgumentException("文件大小超过限制（最大 "
+                        + (sizeLimit / 1024 / 1024) + "MB）"));
+                    return;
+                }
+                sink.next(dataBuffer);
+            }))
+            .flatMap(dataBuffer -> {
+                byte[] bytes = new byte[dataBuffer.readableByteCount()];
+                dataBuffer.read(bytes);
+                DataBufferUtils.release(dataBuffer);
 
-            String originalName = ctx.file().filename();
-            String mediaType = mediaTypeOf(ctx.file(), originalName);
-            String branch = defaultBranch(props.githubBranch());
-            String repo = props.githubRepo();
+                String originalName = ctx.file().filename();
+                String mediaType = mediaTypeOf(ctx.file(), originalName);
+                String branch = defaultBranch(props.githubBranch());
+                String repo = props.githubRepo();
 
-            // GitHub Contents API 的"读 ref -> 提交 -> 更新 ref"在并发写同一分支时会被互相顶掉
-            // （报 409 is at X but expected Y）。这里按 仓库+分支 串行化写操作，与 PicGo 顺序上传一致。
-            return Mono.fromCallable(() ->
-                    withRepoLock(repo, branch,
-                        () -> putWithRetry(props, token, bytes, originalName, mediaType, branch)))
-                .subscribeOn(BLOCKING);
-        });
+                // GitHub Contents API 的"读 ref -> 提交 -> 更新 ref"在并发写同一分支时会被互相顶掉
+                // （报 409 is at X but expected Y）。这里按 仓库+分支 串行化写操作，与 PicGo 顺序上传一致。
+                return Mono.fromCallable(() ->
+                        withRepoLock(repo, branch,
+                            () -> putWithRetry(props, token, bytes, originalName, mediaType, branch)))
+                    .subscribeOn(BLOCKING);
+            });
     }
 
     private ObjectDetail putWithRetry(GithubProperties props, String token, byte[] bytes,
@@ -151,11 +171,12 @@ public class GitHubAttachmentHandler implements AttachmentHandler {
             body.put("branch", branch);
 
             HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url))
+                .timeout(REQUEST_TIMEOUT)
                 .header("Authorization", "Bearer " + token)
                 .header("Accept", "application/vnd.github+json")
                 .header("X-GitHub-Api-Version", "2022-11-28")
                 .PUT(HttpRequest.BodyPublishers.ofString(
-                    JACKSON.writeValueAsString(body), StandardCharsets.UTF_8))
+                    JACKSON.writeValueAsString(body), UTF_8))
                 .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200 || response.statusCode() == 201) {
@@ -202,6 +223,7 @@ public class GitHubAttachmentHandler implements AttachmentHandler {
             String getUrl = apiBase + "/repos/" + repo + "/contents/" + objectKey
                 + "?ref=" + URLEncoder.encode(branch, StandardCharsets.UTF_8);
             HttpRequest getRequest = HttpRequest.newBuilder().uri(URI.create(getUrl))
+                .timeout(REQUEST_TIMEOUT)
                 .header("Authorization", "Bearer " + token)
                 .header("Accept", "application/vnd.github+json")
                 .build();
@@ -227,11 +249,12 @@ public class GitHubAttachmentHandler implements AttachmentHandler {
             body.put("branch", branch);
             String delUrl = apiBase + "/repos/" + repo + "/contents/" + objectKey;
             HttpRequest delRequest = HttpRequest.newBuilder().uri(URI.create(delUrl))
+                .timeout(REQUEST_TIMEOUT)
                 .header("Authorization", "Bearer " + token)
                 .header("Accept", "application/vnd.github+json")
                 .header("X-GitHub-Api-Version", "2022-11-28")
                 .method("DELETE", HttpRequest.BodyPublishers.ofString(
-                    JACKSON.writeValueAsString(body), StandardCharsets.UTF_8))
+                    JACKSON.writeValueAsString(body), UTF_8))
                 .build();
             HttpResponse<String> delResp = httpClient.send(delRequest, HttpResponse.BodyHandlers.ofString());
             if (delResp.statusCode() != 200) {
@@ -350,7 +373,7 @@ public class GitHubAttachmentHandler implements AttachmentHandler {
     /** GitHub 仓库配置属性，对应存储策略表单 {@code default} 组的各字段。 */
     record GithubProperties(String githubRepo, String githubBranch, String githubPathPrefix,
                             String githubCustomUrl, String githubTokenSecretName,
-                            String githubApiBase, String renameFormat) {
+                            String githubApiBase, String renameFormat, Long maxFileSizeMB) {
 
         static GithubProperties from(ConfigMap configMap) {
             String json = configMap.getData().getOrDefault("default", "{}");
@@ -359,6 +382,15 @@ public class GitHubAttachmentHandler implements AttachmentHandler {
             } catch (Exception e) {
                 throw new IllegalArgumentException("存储策略配置解析失败: " + json, e);
             }
+        }
+
+        /** 文件大小限制（MB），未配置时使用默认值 {@value #DEFAULT_MAX_FILE_SIZE_MB}。 */
+        long maxFileSizeBytes() {
+            long mb = maxFileSizeMB == null ? DEFAULT_MAX_FILE_SIZE_MB : maxFileSizeMB;
+            if (mb <= 0 || mb > DEFAULT_MAX_FILE_SIZE_MB) {
+                mb = DEFAULT_MAX_FILE_SIZE_MB;
+            }
+            return Math.multiplyExact(mb, 1024L * 1024L);
         }
     }
 
