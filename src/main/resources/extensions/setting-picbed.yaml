@@ -26,7 +26,7 @@ spec:
           key: githubRepo
           label: 仓库
           placeholder: owner/repo
-          help: 格式为 owner/repo，例如：Dominic-kk/xxxxxx
+          help: 格式为 owner/repo，例如：Dominic-kk/xxxxxx。创建策略后不建议修改仓库，更换仓库请新建存储策略。
           validation: required
           if: "$get(providerType).value === 'github'"
         - $formkit: text
@@ -34,6 +34,7 @@ spec:
           key: githubBranch
           label: 分支
           value: main
+          help: 仓库分支。创建策略后不建议修改分支，更换分支请新建存储策略。
           if: "$get(providerType).value === 'github'"
         - $formkit: text
           name: githubPathPrefix
