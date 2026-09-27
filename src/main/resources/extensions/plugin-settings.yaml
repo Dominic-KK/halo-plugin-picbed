@@ -5,9 +5,41 @@ metadata:
 spec:
   forms:
     - group: notice
-      label: 使用提示
+      label: 🍕使用提示
       formSchema:
         - $el: p
           children: |
             请前往「附件 → 存储策略」，点击「新建」，
             选择「🌹图床附件🌹」进行配置。
+
+    - group: privacy
+      label: 🍟隐私与数据流向
+      formSchema:
+        - $el: h2
+          children: 🍟隐私与数据流向
+        - $el: p
+          children: 🚦本插件为附件存储插件，仅在你上传、删除附件时访问指定的 GitHub 仓库，数据流转披露如下：
+        - $el: hr
+        - $el: h3
+          children: ✨ 数据流转
+        - $el: ul
+          children:
+            - $el: li
+              children: 🔹附件文件内容：上传至 GitHub 仓库存储（GitHub Contents API）。流向：浏览器 → Halo → GitHub API（api.github.com 或你配置的代理）。保存位置：GitHub 仓库。
+            - $el: li
+              children: 🔹重命名/路径：生成仓库内 objectKey。流向：Halo → GitHub API。保存位置：附件元数据（固位注解）。
+            - $el: li
+              children: 🔹GitHub Token：身份认证，存于 Halo Secret，绝不明文落库。流向：Halo → GitHub API 请求头；Cloudflare Worker 环境变量。保存位置：Halo Secret / Worker 环境变量。
+            - $el: li
+              children: 🔹公开访问请求：读取图片，走自定义域名（可选 Cloudflare Worker 代理）。流向：访客 → Cloudflare Worker → GitHub raw。不落盘。
+        - $el: hr
+        - $el: h3
+          children: ✨ 隐私承诺
+        - $el: ul
+          children:
+            - $el: li
+              children: 🔹不收集任何用户个人信息、访问日志、遥测或统计。
+            - $el: li
+              children: 🔹不向上表服务以外的任何第三方传输数据。
+            - $el: li
+              children: 🔹停用插件后不再发起任何外部请求；卸载仅移除插件自身文件。

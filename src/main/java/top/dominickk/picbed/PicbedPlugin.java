@@ -15,8 +15,11 @@ import run.halo.app.plugin.PluginContext;
 @Component
 public class PicbedPlugin extends BasePlugin {
 
-    public PicbedPlugin(PluginContext pluginContext) {
+    private final PolicyConfigWatcher policyConfigWatcher;
+
+    public PicbedPlugin(PluginContext pluginContext, PolicyConfigWatcher policyConfigWatcher) {
         super(pluginContext);
+        this.policyConfigWatcher = policyConfigWatcher;
     }
 
     @Override
@@ -26,6 +29,10 @@ public class PicbedPlugin extends BasePlugin {
 
     @Override
     public void stop() {
+        // 停用/卸载时释放策略配置监听，避免残留后台监听
+        if (policyConfigWatcher != null) {
+            policyConfigWatcher.dispose();
+        }
         System.out.println("插件停止！");
     }
 }

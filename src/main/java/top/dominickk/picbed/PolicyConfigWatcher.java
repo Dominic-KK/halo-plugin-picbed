@@ -28,6 +28,10 @@ public class PolicyConfigWatcher implements Watcher {
     private static final String BRANCH_FIELD = "githubBranch";
     private static final ObjectMapper JACKSON = new ObjectMapper();
 
+    /** 注册到核心 WatcherComposite 时由核心回传的释放回调（Runnable）。 */
+    private volatile Runnable disposeHook;
+    private volatile boolean disposed;
+
     public PolicyConfigWatcher(ReactiveExtensionClient client) {
         client.watch(this);
     }
@@ -58,12 +62,22 @@ public class PolicyConfigWatcher implements Watcher {
 
     @Override
     public void dispose() {
-        // 无需处理
+        disposed = true;
+        var hook = this.disposeHook;
+        if (hook != null) {
+            hook.run();
+        }
+        log.debug("图床策略配置监听已释放");
     }
 
     @Override
     public boolean isDisposed() {
-        return false;
+        return disposed;
+    }
+
+    @Override
+    public void registerDisposeHook(Runnable dispose) {
+        this.disposeHook = dispose;
     }
 
     private static String fieldOf(String json, String field) {
