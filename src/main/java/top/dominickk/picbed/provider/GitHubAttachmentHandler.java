@@ -55,6 +55,9 @@ public class GitHubAttachmentHandler implements AttachmentHandler {
     public static final String DEFAULT_API_BASE = "https://api.github.com";
     private static final String POLICY_TEMPLATE_NAME = "picbed";
     private static final String OBJECT_KEY_ANNO = "picbed.plugin.halo.run/object-key";
+    /** 固位注解：上传时把实际存储位置（仓库/分支）写入附件，删除时据此定位，避免策略改动后误删。 */
+    private static final String REPO_ANNO = "picbed.plugin.halo.run/repo";
+    private static final String BRANCH_ANNO = "picbed.plugin.halo.run/branch";
     private static final String SECRET_KEY = "picbed-github-token";
 
     /** 单文件大小上限默认值（MB）：GitHub Contents API 单文件理论上限约 100MB，Base64 后约 133MB，默认为 50MB。 */
@@ -80,7 +83,7 @@ public class GitHubAttachmentHandler implements AttachmentHandler {
             .flatMap(ctx -> {
                 var props = GithubProperties.from(ctx.configMap());
                 return readToken(props).flatMap(token -> upload(ctx, props, token))
-                    .map(detail -> this.buildAttachment(detail));
+                    .map(detail -> this.buildAttachment(props, detail));
             });
     }
 
@@ -90,28 +93,46 @@ public class GitHubAttachmentHandler implements AttachmentHandler {
             .filter(ctx -> this.shouldHandle(ctx.policy()))
             .flatMap(ctx -> {
                 var annotations = ctx.attachment().getMetadata().getAnnotations();
-                if (annotations == null || !annotations.containsKey(OBJECT_KEY_ANNO)) {
+                // 定位不到实际存储位置（缺 object-key 或固位注解）时，只删除 Halo 附件记录，
+                // 不处理 GitHub 文件，避免策略改动后误删/错删（GitHub 文件安全优先）
+                if (annotations == null || !annotations.containsKey(OBJECT_KEY_ANNO)
+                    || !annotations.containsKey(REPO_ANNO) || !annotations.containsKey(BRANCH_ANNO)) {
+                    log.warn("附件缺少固位信息，仅删除 Halo 附件记录，不处理 GitHub 文件: {}",
+                        ctx.attachment().getMetadata().getName());
                     return Mono.just(ctx.attachment());
                 }
-                String objectKey = annotations.get(OBJECT_KEY_ANNO);
                 var props = GithubProperties.from(ctx.configMap());
+                String objectKey = annotations.get(OBJECT_KEY_ANNO);
+                // 删除必须按上传时固化的实际存储位置（repo/branch/object-key）定位，避免修改策略后误删新仓库同路径文件
+                String repo = annotations.get(REPO_ANNO);
+                String branch = defaultBranch(annotations.get(BRANCH_ANNO));
+                // GitHub 远端删除失败只记录日志，不影响 Halo 附件删除动作
                 return readToken(props)
-                    .flatMap(token -> deleteRemote(props, token, objectKey))
+                    .flatMap(token -> deleteRemote(props, token, repo, branch, objectKey))
+                    .doOnError(err -> log.warn(
+                        "GitHub 远端删除失败，附件仍将从 Halo 删除: repo={}, branch={}, objectKey={}",
+                        repo, branch, objectKey, err))
+                    .onErrorResume(err -> Mono.empty())
                     .thenReturn(ctx.attachment());
             });
     }
 
     @Override
     public Mono<URI> getPermalink(Attachment attachment, Policy policy, ConfigMap configMap) {
-        var annotations = attachment.getMetadata().getAnnotations();
-        if (annotations != null && annotations.containsKey(Constant.EXTERNAL_LINK_ANNO_KEY)) {
-            return Mono.just(URI.create(annotations.get(Constant.EXTERNAL_LINK_ANNO_KEY)));
-        }
-        if (annotations == null || !annotations.containsKey(OBJECT_KEY_ANNO)) {
+        if (!this.shouldHandle(policy)) {
             return Mono.empty();
         }
-        var props = GithubProperties.from(configMap);
-        return Mono.just(URI.create(buildPublicUrl(props, annotations.get(OBJECT_KEY_ANNO))));
+        var annotations = attachment.getMetadata().getAnnotations();
+        if (annotations != null && annotations.containsKey(OBJECT_KEY_ANNO)) {
+            // 用固化的 object-key + 当前 customUrl 动态重建，更换自定义域名后存量链接自动更新
+            var props = GithubProperties.from(configMap);
+            return Mono.just(URI.create(buildPublicUrl(props, annotations.get(OBJECT_KEY_ANNO))));
+        }
+        if (annotations != null && annotations.containsKey(Constant.EXTERNAL_LINK_ANNO_KEY)) {
+            // 兼容旧版本：无 object-key 的存量附件
+            return Mono.just(URI.create(annotations.get(Constant.EXTERNAL_LINK_ANNO_KEY)));
+        }
+        return Mono.empty();
     }
 
     @Override
@@ -211,10 +232,9 @@ public class GitHubAttachmentHandler implements AttachmentHandler {
 
     // ------------------------------------------------------------------ delete
 
-    private Mono<Void> deleteRemote(GithubProperties props, String token, String objectKey) {
+    private Mono<Void> deleteRemote(GithubProperties props, String token, String repo, String branch,
+                                    String objectKey) {
         return Mono.fromCallable(() -> {
-            String branch = defaultBranch(props.githubBranch());
-            String repo = props.githubRepo();
             // 删除同样改写仓库分支 ref，与上传共用同一把锁避免竞态
             return withRepoLock(repo, branch, () -> {
                 String apiBase = resolveApiBase(props.githubApiBase());
@@ -306,11 +326,16 @@ public class GitHubAttachmentHandler implements AttachmentHandler {
             });
     }
 
-    private Attachment buildAttachment(ObjectDetail detail) {
+    private Attachment buildAttachment(GithubProperties props, ObjectDetail detail) {
         var metadata = new Metadata();
         metadata.setName(UUID.randomUUID().toString());
+        // 固位：把仓库/分支/object-key 与文件真实存放位置绑定，删除时据此定位，
+        // 避免存储策略改动后误删；公开链接由 getPermalink 用当前 customUrl 动态重建，
+        // 更换自定义域名后存量附件链接自动更新。EXTERNAL_LINK 仅作上传时快照。
         metadata.setAnnotations(Map.of(
             OBJECT_KEY_ANNO, detail.objectKey(),
+            REPO_ANNO, props.githubRepo(),
+            BRANCH_ANNO, defaultBranch(props.githubBranch()),
             Constant.EXTERNAL_LINK_ANNO_KEY, detail.publicUrl()));
 
         var spec = new AttachmentSpec();
