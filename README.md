@@ -62,6 +62,7 @@ Halo 应用市场已存在同类型插件 [GitHubOSS / Github附件插件](https
 
 | 维度           | GitHubOSS                                                                                                                        | 本插件（halo-plugin-picbed）                                              |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| **致命缺陷**     | 安装后可能将**其他附件策略下已存在的图片链接改写为无效地址**（如`https://cdn.jsdelivr.net/gh/null/null@main/null`），导致存量图片链接全部失效，且卸载后无法恢复，见[issues #36](https://github.com/guicaiyue/plugin-githuboss/issues/36) | 使用独立 `AttachmentHandler`，只处理本插件生成的附件，**绝不干预其他策略的现有链接** | 
 | **仓库可见性**    | 仅支持**公开仓库**                                                                                                                      | 支持**公开/私有仓库**                                                        |
 | **访问加速**     | jsdelivr 多域名测速                                                                                                                   | **自有 Cloudflare Worker 自定义域名**，私有库亦可在服务端注入 token 生成干净链接              |
 | **访问稳定性**    | 存在已知缺陷：会将附件链接改写为`gcore.jsdelivr.net`，该域名不可达时**附件界面全部报错**（见 [issue #33](https://github.com/guicaiyue/plugin-githuboss/issues/33)） | 使用用户可掌控的自有域名，不受第三方 CDN 单点故障影响                                        |
