@@ -26,8 +26,24 @@ jobs:
       - name: Build plugin JAR
         run: ./gradlew build
 
+      - name: Extract changelog section for this tag
+        id: notes
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          if [ ! -f CHANGELOG.md ]; then
+            echo "CHANGELOG.md 不存在，无法生成 Release Notes"
+            exit 1
+          fi
+          BODY=$(awk "/^## \\[v${VERSION}\\]/{f=1;next} /^## /{f=0} f" CHANGELOG.md)
+          {
+            echo "body<<EOF"
+            echo "$BODY"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Upload assets to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: build/libs/*.jar
-          generate_release_notes: true
+          body: ${{ steps.notes.outputs.body }}
+          generate_release_notes: false
