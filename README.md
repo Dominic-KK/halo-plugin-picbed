@@ -14,11 +14,18 @@
 
 ## 使用教程
 
-1. 安装本插件并启用。
-2. 前往 **附件 → 存储策略 → 新建**，选择「🌹图床附件🌹」。
-3. 填写以下配置。
+1. 前往 [Releases](https://github.com/Dominic-KK/halo-plugin-picbed/releases) 下载最新版 JAR（如 `halo-plugin-picbed-1.1.1.jar`）。
+2. Halo 后台 → **插件 → 安装** → 上传 JAR 文件 → 安装并启用。
+3. 前往 **附件 → 存储策略 → 新建**，选择「🌹图床附件🌹」。
+4. 填写配置。
 
-> 存储策略创建后**请勿修改仓库与分支**，更换请新建策略。
+> ⚠ 存储策略创建后**请勿修改仓库与分支**，更换请新建策略。
+
+### 私有仓库 + Cloudflare 代理（可选，推荐）
+
+搭配 **GitHub 私有仓库 + Cloudflare Worker 反代 + 自定义域名**：免费、私有、国内可访问，公开链接不携带 token。部署步骤（GitHub 令牌、Worker 脚本与环境变量、域名绑定、验证输出）详见：
+
+- [作者博客《GitHub + Cloudflare + Picgo 搭建你的免费图床》](https://blog.dominickk.top/archives/l47gY0Vr)
 
 ### 配置项说明
 
@@ -62,9 +69,8 @@
 
 ## 更新日志
 
-> - [更新日志-用户](./CHANGELOG.md)
-> 
-> - [更新日志-开发者](./CHANGELOG-DEV.md)
+- [更新日志-用户](./CHANGELOG.md)
+- [更新日志-开发者](./CHANGELOG-DEV.md)
 
 ## 维护计划
 
